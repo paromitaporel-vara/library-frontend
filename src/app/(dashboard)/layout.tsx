@@ -44,9 +44,12 @@ export default function DashboardLayout({
 
   const navItems = [
     { href: '/books', label: 'Books' },
-    { href: '/users', label: 'Users' },
     { href: '/borrows', label: 'Borrows' },
   ];
+
+  if (user?.role === 'ADMIN') {
+    navItems.push({ href: '/users', label: 'Users' });
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -62,11 +65,10 @@ export default function DashboardLayout({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                      pathname === item.href
+                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${pathname === item.href
                         ? 'border-blue-500 text-gray-900'
                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                    }`}
+                      }`}
                   >
                     {item.label}
                   </Link>

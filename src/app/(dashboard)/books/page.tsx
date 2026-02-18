@@ -3,12 +3,16 @@
 import { useState, useEffect } from "react";
 import api from "@/lib/api";
 import { Book } from "@/types";
+import { useAuthStore } from "@/lib/auth";
+import Modal from "@/components/Modal";
 
 export default function BooksPage() {
+  const { user } = useAuthStore();
   const [books, setBooks] = useState<Book[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [modalMessage, setModalMessage] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     author: "",
@@ -51,7 +55,7 @@ export default function BooksPage() {
 
       fetchBooks();
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to add book");
+      setModalMessage(err.response?.data?.message || "Failed to delete book");
     }
   };
 
@@ -62,7 +66,7 @@ export default function BooksPage() {
       await api.delete(`/books/${id}`);
       fetchBooks();
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to delete book");
+      setModalMessage(err.response?.data?.message || "Failed to delete book");
     }
   };
 
@@ -80,12 +84,14 @@ export default function BooksPage() {
           </p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-          >
-            Add Book
-          </button>
+          {user?.role === "ADMIN" && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+            >
+              Add Book
+            </button>
+          )}
         </div>
       </div>
 
@@ -144,12 +150,14 @@ export default function BooksPage() {
                       </td>
 
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                        <button
-                          onClick={() => handleDeleteBook(book.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          Delete
-                        </button>
+                        {user?.role === "ADMIN" && (
+                          <button
+                            onClick={() => handleDeleteBook(book.id)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -166,6 +174,13 @@ export default function BooksPage() {
             <h2 className="text-2xl font-bold mb-4">Add New Book</h2>
             <form onSubmit={handleAddBook} className="space-y-4">
               <div>
+                {modalMessage && (
+                  <Modal
+                    message={modalMessage}
+                    onClose={() => setModalMessage(null)}
+                  />
+                )}
+
                 <label className="block text-sm font-medium text-gray-700">
                   Title *
                 </label>

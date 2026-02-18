@@ -1,24 +1,23 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import api from '@/lib/api';
-import { Borrow, Book, User } from '@/types';
+import { useState, useEffect } from "react";
+import api from "@/lib/api";
+import { Borrow, Book, User } from "@/types";
 
 export default function BorrowsPage() {
   const [borrows, setBorrows] = useState<Borrow[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-const [editingBorrow, setEditingBorrow] = useState<Borrow | null>(null);
-const [editDueDate, setEditDueDate] = useState('');
-
+  const [editingBorrow, setEditingBorrow] = useState<Borrow | null>(null);
+  const [editDueDate, setEditDueDate] = useState("");
+  const [modalMessage, setModalMessage]=useState("");
   const [formData, setFormData] = useState({
-    userId: '',
-    bookId: '',
-    dueDate: '',
+    userId: "",
+    bookId: "",
   });
 
   useEffect(() => {
@@ -29,16 +28,16 @@ const [editDueDate, setEditDueDate] = useState('');
     try {
       setIsLoading(true);
       const [borrowsRes, booksRes, usersRes] = await Promise.all([
-        api.get<Borrow[]>('/borrows'),
-        api.get<Book[]>('/books'),
-        api.get<User[]>('/users'),
+        api.get<Borrow[]>("/borrows"),
+        api.get<Book[]>("/books"),
+        api.get<User[]>("/users"),
       ]);
       setBorrows(borrowsRes.data);
       setBooks(booksRes.data);
       setUsers(usersRes.data);
-      setError('');
+      setError("");
     } catch (err: any) {
-      setError('Failed to fetch data');
+      setError("Failed to fetch data");
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -48,57 +47,59 @@ const [editDueDate, setEditDueDate] = useState('');
   const handleCreateBorrow = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/borrows', formData);
+      await api.post("/borrows", formData);
       setShowAddModal(false);
-      setFormData({ userId: '', bookId: '', dueDate: '' });
+      setFormData({ userId: "", bookId: "" });
       fetchData();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to create borrow');
+      setModalMessage(err.response?.data?.message || "Failed to create borrow");
     }
   };
 
   const handleEditBorrow = (borrow: Borrow) => {
-  setEditingBorrow(borrow);
-  setEditDueDate(borrow.dueDate.split('T')[0]); 
-  setShowEditModal(true);
-};
-
+    setEditingBorrow(borrow);
+    setEditDueDate(borrow.dueDate.split("T")[0]);
+    setShowEditModal(true);
+  };
 
   const handleUpdateBorrow = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!editingBorrow) return;
+    e.preventDefault();
+    if (!editingBorrow) return;
 
-  try {
-    await api.patch(`/borrows/${editingBorrow.id}`, {
-      dueDate: editDueDate,
-    });
+    try {
+      await api.patch(`/borrows/${editingBorrow.id}`, {
+        dueDate: editDueDate,
+      });
 
-    setShowEditModal(false);
-    setEditingBorrow(null);
-    fetchData();
-  } catch (err: any) {
-    alert(err.response?.data?.message || 'Failed to update borrow');
-  }
-};
-
+      setShowEditModal(false);
+      setEditingBorrow(null);
+      fetchData();
+    } catch (err: any) {
+      setModalMessage(err.response?.data?.message || "Failed to delete book");
+    }
+  };
 
   const handleReturnBook = async (id: string) => {
-    if (!confirm('Mark this book as returned?')) return;
-    
+    if (!confirm("Mark this book as returned?")) return;
+
     try {
       await api.patch(`/borrows/${id}/return`);
       fetchData();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to return book');
+      setModalMessage(err.response?.data?.message || "Failed to delete book");
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'ACTIVE': return 'bg-blue-100 text-blue-800';
-      case 'RETURNED': return 'bg-green-100 text-green-800';
-      case 'OVERDUE': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case "ACTIVE":
+        return "bg-blue-100 text-blue-800";
+      case "RETURNED":
+        return "bg-green-100 text-green-800";
+      case "OVERDUE":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -138,12 +139,24 @@ const [editDueDate, setEditDueDate] = useState('');
               <table className="min-w-full divide-y divide-gray-300">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Book</th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">User</th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Borrow Date</th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Due Date</th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Return Date</th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Book
+                    </th>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      User
+                    </th>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Borrow Date
+                    </th>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Due Date
+                    </th>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Return Date
+                    </th>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Status
+                    </th>
                     <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -153,10 +166,10 @@ const [editDueDate, setEditDueDate] = useState('');
                   {borrows.map((borrow) => (
                     <tr key={borrow.id}>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {borrow.book?.title || 'Unknown'}
+                        {borrow.book?.title || "Unknown"}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {borrow.user?.name || borrow.user?.email || 'Unknown'}
+                        {borrow.user?.name || borrow.user?.email || "Unknown"}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                         {new Date(borrow.borrowedAt).toLocaleDateString()}
@@ -165,16 +178,20 @@ const [editDueDate, setEditDueDate] = useState('');
                         {new Date(borrow.dueDate).toLocaleDateString()}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {borrow.returnedAt ? new Date(borrow.returnedAt).toLocaleDateString() : '-'}
+                        {borrow.returnedAt
+                          ? new Date(borrow.returnedAt).toLocaleDateString()
+                          : "-"}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
-                        <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(borrow.status)}`}>
+                        <span
+                          className={`px-2 py-1 text-xs rounded-full ${getStatusColor(borrow.status)}`}
+                        >
                           {borrow.status}
                         </span>
                       </td>
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                         <div className="flex gap-3 justify-end">
-                          {borrow.status !== 'RETURNED' && (
+                          {borrow.status !== "RETURNED" && (
                             <button
                               onClick={() => handleEditBorrow(borrow)}
                               className="text-blue-600 hover:text-blue-900"
@@ -183,7 +200,7 @@ const [editDueDate, setEditDueDate] = useState('');
                             </button>
                           )}
 
-                          {borrow.status === 'ACTIVE' && (
+                          {borrow.status === "ACTIVE" && (
                             <button
                               onClick={() => handleReturnBook(borrow.id)}
                               className="text-green-600 hover:text-green-900"
@@ -193,7 +210,6 @@ const [editDueDate, setEditDueDate] = useState('');
                           )}
                         </div>
                       </td>
-
                     </tr>
                   ))}
                 </tbody>
@@ -203,18 +219,21 @@ const [editDueDate, setEditDueDate] = useState('');
         </div>
       </div>
 
-      
       {showAddModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 max-w-md w-full">
             <h2 className="text-2xl font-bold mb-4">Create New Borrow</h2>
             <form onSubmit={handleCreateBorrow} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">User *</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  User *
+                </label>
                 <select
                   required
                   value={formData.userId}
-                  onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, userId: e.target.value })
+                  }
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 >
                   <option value="">Select a user</option>
@@ -226,30 +245,29 @@ const [editDueDate, setEditDueDate] = useState('');
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Book *</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Book *
+                </label>
                 <select
                   required
                   value={formData.bookId}
-                  onChange={(e) => setFormData({ ...formData, bookId: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, bookId: e.target.value })
+                  }
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 >
                   <option value="">Select a book</option>
                   {books.map((book) => (
-                    <option key={book.id} value={book.id} disabled={!book.isAvailable}>
-                      {book.title} - {book.author} {!book.isAvailable ? '(Not Available)' : ''}
+                    <option
+                      key={book.id}
+                      value={book.id}
+                      disabled={!book.isAvailable}
+                    >
+                      {book.title} - {book.author}{" "}
+                      {!book.isAvailable ? "(Not Available)" : ""}
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Due Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={formData.dueDate}
-                  onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
               </div>
               <div className="flex gap-2 mt-6">
                 <button
@@ -272,42 +290,42 @@ const [editDueDate, setEditDueDate] = useState('');
       )}
 
       {showEditModal && editingBorrow && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-8 max-w-md w-full">
-              <h2 className="text-2xl font-bold mb-4">Edit Due Date</h2>
-              <form onSubmit={handleUpdateBorrow} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Due Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={editDueDate}
-                    onChange={(e) => setEditDueDate(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+            <h2 className="text-2xl font-bold mb-4">Edit Due Date</h2>
+            <form onSubmit={handleUpdateBorrow} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Due Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={editDueDate}
+                  onChange={(e) => setEditDueDate(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
 
-                <div className="flex gap-2 mt-6">
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    Update
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowEditModal(false)}
-                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
+              <div className="flex gap-2 mt-6">
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Update
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
-        )}
+        </div>
+      )}
     </div>
   );
 }
