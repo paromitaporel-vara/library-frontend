@@ -45,6 +45,7 @@ export default function DashboardLayout({
   const navItems = [
     { href: '/books', label: 'Books' },
     { href: '/borrows', label: 'Borrows' },
+    { href: '/profile', label: 'Profile' },
   ];
 
   if (user?.role === 'ADMIN') {
@@ -76,6 +77,25 @@ export default function DashboardLayout({
               </div>
             </div>
             <div className="flex items-center">
+              <div className="mr-4">
+                {user?.profilePhoto ? (
+                  <img
+                    src={`http://localhost:3000${user.profilePhoto}`}
+                    alt="Profile"
+                    className="w-10 h-10 rounded-full object-cover cursor-pointer"
+                    onClick={() => router.push('/profile')}
+                  />
+                ) : (
+                  <div 
+                    className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center cursor-pointer"
+                    onClick={() => router.push('/profile')}
+                  >
+                    <svg className="w-6 h-6 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+              </div>
               <span className="text-sm text-gray-700 mr-4">
                 {user?.name || user?.email}
               </span>

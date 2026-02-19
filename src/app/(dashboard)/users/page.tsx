@@ -69,6 +69,7 @@ export default function UsersPage() {
                     <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Name</th>
                     <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Email</th>
                     <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Role</th>
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Fine (₹)</th>
                     <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Created</th>
                     <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
                       <span className="sr-only">Actions</span>
@@ -84,6 +85,9 @@ export default function UsersPage() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{user.email}</td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                         {user.role || 'User'}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {user.fine ? `₹${user.fine.toFixed(2)}` : '₹0.00'}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                         {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}

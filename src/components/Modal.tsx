@@ -19,6 +19,7 @@ const Modal: React.FC<ModalProps> = ({ message, onClose }) => {
   );
 };
 
+
 const overlayStyle: React.CSSProperties = {
   position: "fixed",
   top: 0,

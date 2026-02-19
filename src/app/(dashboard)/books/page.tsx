@@ -16,7 +16,8 @@ export default function BooksPage() {
   const [formData, setFormData] = useState({
     title: "",
     author: "",
-    isAvailable: "",
+    publisher: "",
+    copies: 1,
   });
 
   useEffect(() => {
@@ -50,7 +51,8 @@ export default function BooksPage() {
       setFormData({
         title: "",
         author: "",
-        isAvailable: "",
+        publisher: "",
+        copies: 1,
       });
 
       fetchBooks();
@@ -117,6 +119,14 @@ export default function BooksPage() {
                     </th>
 
                     <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Publisher
+                    </th>
+
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Copies
+                    </th>
+
+                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                       Available
                     </th>
 
@@ -135,6 +145,14 @@ export default function BooksPage() {
 
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                         {book.author}
+                      </td>
+
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {book.publisher || '-'}
+                      </td>
+
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {book.copies}
                       </td>
 
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
@@ -204,6 +222,36 @@ export default function BooksPage() {
                   value={formData.author}
                   onChange={(e) =>
                     setFormData({ ...formData, author: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Publisher
+                </label>
+                <input
+                  type="text"
+                  value={formData.publisher}
+                  onChange={(e) =>
+                    setFormData({ ...formData, publisher: e.target.value })
+                  }
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Copies *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={formData.copies}
+                  onChange={(e) =>
+                    setFormData({ ...formData, copies: Number(e.target.value) })
                   }
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                 />

@@ -3,8 +3,15 @@
 import { useState, useEffect } from "react";
 import api from "@/lib/api";
 import { Borrow, Book, User } from "@/types";
+import { useAuthStore } from "@/lib/auth";
+import Modal from "@/components/Modal";
+import ConfirmModal from "@/components/ConfirmModal";
+import SearchableSelect from "@/components/SearchableSelect";
 
 export default function BorrowsPage() {
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === "ADMIN";
+
   const [borrows, setBorrows] = useState<Borrow[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -14,7 +21,10 @@ export default function BorrowsPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingBorrow, setEditingBorrow] = useState<Borrow | null>(null);
   const [editDueDate, setEditDueDate] = useState("");
-  const [modalMessage, setModalMessage]=useState("");
+  const [modalMessage, setModalMessage] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [showReturnConfirm, setShowReturnConfirm] = useState<string | null>(null);
+  
   const [formData, setFormData] = useState({
     userId: "",
     bookId: "",
@@ -22,13 +32,13 @@ export default function BorrowsPage() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [sortOrder]);
 
   const fetchData = async () => {
     try {
       setIsLoading(true);
       const [borrowsRes, booksRes, usersRes] = await Promise.all([
-        api.get<Borrow[]>("/borrows"),
+        api.get<Borrow[]>(`/borrows?sortOrder=${sortOrder}`),
         api.get<Book[]>("/books"),
         api.get<User[]>("/users"),
       ]);
@@ -44,6 +54,10 @@ export default function BorrowsPage() {
     }
   };
 
+  const toggleSortOrder = () => {
+    setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+  };
+
   const handleCreateBorrow = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -57,6 +71,10 @@ export default function BorrowsPage() {
   };
 
   const handleEditBorrow = (borrow: Borrow) => {
+    if (!isAdmin) {
+      setModalMessage("Only admins can edit borrows");
+      return;
+    }
     setEditingBorrow(borrow);
     setEditDueDate(borrow.dueDate.split("T")[0]);
     setShowEditModal(true);
@@ -75,18 +93,29 @@ export default function BorrowsPage() {
       setEditingBorrow(null);
       fetchData();
     } catch (err: any) {
-      setModalMessage(err.response?.data?.message || "Failed to delete book");
+      setModalMessage(err.response?.data?.message || "Failed to update borrow");
     }
   };
 
   const handleReturnBook = async (id: string) => {
-    if (!confirm("Mark this book as returned?")) return;
+    if (!isAdmin) {
+      setModalMessage("Only admins can mark books as returned");
+      return;
+    }
+
+    setShowReturnConfirm(id);
+  };
+
+  const confirmReturnBook = async () => {
+    if (!showReturnConfirm) return;
 
     try {
-      await api.patch(`/borrows/${id}/return`);
+      await api.patch(`/borrows/${showReturnConfirm}/return`);
+      setShowReturnConfirm(null);
       fetchData();
     } catch (err: any) {
-      setModalMessage(err.response?.data?.message || "Failed to delete book");
+      setModalMessage(err.response?.data?.message || "Failed to return book");
+      setShowReturnConfirm(null);
     }
   };
 
@@ -101,6 +130,11 @@ export default function BorrowsPage() {
       default:
         return "bg-gray-100 text-gray-800";
     }
+  };
+
+  const getAvailableCopies = (book: Book) => {
+    const activeBorrows = book.borrows?.filter(b => !b.returnedAt).length || 0;
+    return book.copies - activeBorrows;
   };
 
   if (isLoading) {
@@ -146,7 +180,21 @@ export default function BorrowsPage() {
                       User
                     </th>
                     <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Borrow Date
+                      <button
+                        onClick={toggleSortOrder}
+                        className="flex items-center gap-1 hover:text-blue-600"
+                      >
+                        Borrow Date
+                        {sortOrder === "desc" ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                        )}
+                      </button>
                     </th>
                     <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                       Due Date
@@ -191,7 +239,7 @@ export default function BorrowsPage() {
                       </td>
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                         <div className="flex gap-3 justify-end">
-                          {borrow.status !== "RETURNED" && (
+                          {isAdmin && borrow.status !== "RETURNED" && (
                             <button
                               onClick={() => handleEditBorrow(borrow)}
                               className="text-blue-600 hover:text-blue-900"
@@ -200,7 +248,7 @@ export default function BorrowsPage() {
                             </button>
                           )}
 
-                          {borrow.status === "ACTIVE" && (
+                          {isAdmin && borrow.status === "ACTIVE" && (
                             <button
                               onClick={() => handleReturnBook(borrow.id)}
                               className="text-green-600 hover:text-green-900"
@@ -219,56 +267,56 @@ export default function BorrowsPage() {
         </div>
       </div>
 
+      {modalMessage && (
+        <Modal message={modalMessage} onClose={() => setModalMessage(null)} />
+      )}
+
+      {showReturnConfirm && (
+        <ConfirmModal
+          title="Confirm Return"
+          message="Are you sure you want to mark this book as returned? This will calculate any applicable fines."
+          onConfirm={confirmReturnBook}
+          onCancel={() => setShowReturnConfirm(null)}
+          confirmText="Yes, Return Book"
+          cancelText="Cancel"
+        />
+      )}
+
       {showAddModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold mb-4">Create New Borrow</h2>
             <form onSubmit={handleCreateBorrow} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  User *
-                </label>
-                <select
+              {isAdmin && (
+                <SearchableSelect
+                  label="User"
                   required
                   value={formData.userId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, userId: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="">Select a user</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name || user.email}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Book *
-                </label>
-                <select
-                  required
-                  value={formData.bookId}
-                  onChange={(e) =>
-                    setFormData({ ...formData, bookId: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="">Select a book</option>
-                  {books.map((book) => (
-                    <option
-                      key={book.id}
-                      value={book.id}
-                      disabled={!book.isAvailable}
-                    >
-                      {book.title} - {book.author}{" "}
-                      {!book.isAvailable ? "(Not Available)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  onChange={(value) => setFormData({ ...formData, userId: value })}
+                  options={users.map((user) => ({
+                    value: user.id,
+                    label: user.name || user.email,
+                  }))}
+                  placeholder="Search by name or email..."
+                />
+              )}
+              
+              <SearchableSelect
+                label="Book"
+                required
+                value={formData.bookId}
+                onChange={(value) => setFormData({ ...formData, bookId: value })}
+                options={books.map((book) => {
+                  const availableCopies = getAvailableCopies(book);
+                  return {
+                    value: book.id,
+                    label: `${book.title} - ${book.author}${book.publisher ? ` (${book.publisher})` : ''} - ${availableCopies > 0 ? `${availableCopies} available` : 'Not Available'}`,
+                    disabled: availableCopies === 0,
+                  };
+                })}
+                placeholder="Search by title, author, or publisher..."
+              />
+              
               <div className="flex gap-2 mt-6">
                 <button
                   type="submit"
@@ -278,7 +326,10 @@ export default function BorrowsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setFormData({ userId: "", bookId: "" });
+                  }}
                   className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
                 >
                   Cancel

@@ -3,6 +3,8 @@ export interface User {
   email: string;
   name?: string;
   role?: 'ADMIN' | 'USER' | string;
+  fine?: number;
+  profilePhoto?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -11,7 +13,10 @@ export interface Book {
   id: string;
   title: string;
   author: string;
-  isAvailable: boolean
+  publisher?: string;
+  copies: number;
+  isAvailable: boolean;
+  borrows?: Borrow[];
 }
 
 export interface Borrow {
