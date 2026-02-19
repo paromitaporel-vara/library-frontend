@@ -28,6 +28,9 @@ export default function BorrowsPage() {
   const [formData, setFormData] = useState({
     userId: "",
     bookId: "",
+    bookTitle: "",
+    bookAuthor: "",
+    bookPublisher: "",
   });
 
   useEffect(() => {
@@ -61,9 +64,12 @@ export default function BorrowsPage() {
   const handleCreateBorrow = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post("/borrows", formData);
+      await api.post("/borrows", {
+        userId: formData.userId,
+        bookId: formData.bookId,
+      });
       setShowAddModal(false);
-      setFormData({ userId: "", bookId: "" });
+      setFormData({ userId: "", bookId: "", bookTitle: "", bookAuthor: "", bookPublisher: "" });
       fetchData();
     } catch (err: any) {
       setModalMessage(err.response?.data?.message || "Failed to create borrow");
@@ -302,20 +308,74 @@ export default function BorrowsPage() {
               )}
               
               <SearchableSelect
-                label="Book"
+                label="Book Title"
                 required
-                value={formData.bookId}
-                onChange={(value) => setFormData({ ...formData, bookId: value })}
-                options={books.map((book) => {
-                  const availableCopies = getAvailableCopies(book);
-                  return {
-                    value: book.id,
-                    label: `${book.title} - ${book.author}${book.publisher ? ` (${book.publisher})` : ''} - ${availableCopies > 0 ? `${availableCopies} available` : 'Not Available'}`,
-                    disabled: availableCopies === 0,
-                  };
-                })}
-                placeholder="Search by title, author, or publisher..."
+                value={formData.bookTitle}
+                onChange={(value) => {
+                  setFormData({ ...formData, bookTitle: value, bookId: "" });
+                }}
+                options={books.map((book) => ({
+                  value: book.title,
+                  label: book.title,
+                }))}
+                placeholder="Search by title..."
               />
+
+              <SearchableSelect
+                label="Author"
+                required
+                value={formData.bookAuthor}
+                onChange={(value) => {
+                  setFormData({ ...formData, bookAuthor: value, bookId: "" });
+                }}
+                options={books.map((book) => ({
+                  value: book.author,
+                  label: book.author,
+                }))}
+                placeholder="Search by author..."
+              />
+
+              <SearchableSelect
+                label="Publisher"
+                required
+                value={formData.bookPublisher}
+                onChange={(value) => {
+                  setFormData({ ...formData, bookPublisher: value, bookId: "" });
+                }}
+                options={books
+                  .filter((book) => book.publisher)
+                  .map((book) => ({
+                    value: book.publisher || "",
+                    label: book.publisher || "",
+                  }))
+                  .filter((item, index, self) => self.findIndex((x) => x.value === item.value) === index)}
+                placeholder="Search by publisher..."
+              />
+
+              {formData.bookTitle && formData.bookAuthor && formData.bookPublisher && (
+                <SearchableSelect
+                  label="Select Book"
+                  required
+                  value={formData.bookId}
+                  onChange={(value) => setFormData({ ...formData, bookId: value })}
+                  options={books
+                    .filter(
+                      (book) =>
+                        book.title === formData.bookTitle &&
+                        book.author === formData.bookAuthor &&
+                        book.publisher === formData.bookPublisher
+                    )
+                    .map((book) => {
+                      const availableCopies = getAvailableCopies(book);
+                      return {
+                        value: book.id,
+                        label: `${availableCopies > 0 ? `${availableCopies} available` : 'Not Available'}`,
+                        disabled: availableCopies === 0,
+                      };
+                    })}
+                  placeholder="Select a book..."
+                />
+              )}
               
               <div className="flex gap-2 mt-6">
                 <button
@@ -328,7 +388,7 @@ export default function BorrowsPage() {
                   type="button"
                   onClick={() => {
                     setShowAddModal(false);
-                    setFormData({ userId: "", bookId: "" });
+                    setFormData({ userId: "", bookId: "", bookTitle: "", bookAuthor: "", bookPublisher: "" });
                   }}
                   className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
                 >
