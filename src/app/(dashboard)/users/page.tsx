@@ -3,38 +3,66 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { User } from '@/types';
+import ConfirmModal from '@/components/ConfirmModal';
+import Modal from '@/components/Modal';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showActiveBorrowsModal, setShowActiveBorrowsModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
-  const fetchUsers = async () => {
+  useEffect(() => {
+    const delayDebounce = setTimeout(() => {
+      fetchUsers(searchQuery, true);
+    }, 300);
+
+    return () => clearTimeout(delayDebounce);
+  }, [searchQuery]);
+
+  const fetchUsers = async (query?: string, isSearching = false) => {
     try {
-      setIsLoading(true);
-      const response = await api.get<User[]>('/users');
+      if (!isSearching) {
+        setIsLoading(true);
+      }
+      const endpoint = query ? `/users/search?q=${encodeURIComponent(query)}` : '/users';
+      const response = await api.get<User[]>(endpoint);
       setUsers(response.data);
       setError('');
     } catch (err: any) {
       setError('Failed to fetch users');
       console.error(err);
     } finally {
-      setIsLoading(false);
+      if (!isSearching) {
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleDeleteUser = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this user?')) return;
+  const handleDeleteUser = async () => {
+    if (!deleteUserId || isDeleting) return;
     
     try {
-      await api.delete(`/users/${id}`);
+      setIsDeleting(true);
+      await api.delete(`/users/${deleteUserId}`);
+      setDeleteUserId(null);
       fetchUsers();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to delete user');
+      setDeleteUserId(null);
+      if (err.response?.data?.message?.includes('active borrows')) {
+        setShowActiveBorrowsModal(true);
+      } else {
+        setError(err.response?.data?.message || 'Failed to delete user');
+      }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -58,6 +86,16 @@ export default function UsersPage() {
           {error}
         </div>
       )}
+
+      <div className="mt-4">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by name or email..."
+          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
 
       <div className="mt-8 flex flex-col">
         <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
@@ -94,7 +132,7 @@ export default function UsersPage() {
                       </td>
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                         <button
-                          onClick={() => handleDeleteUser(user.id)}
+                          onClick={() => setDeleteUserId(user.id)}
                           className="text-red-600 hover:text-red-900"
                         >
                           Delete
@@ -108,6 +146,24 @@ export default function UsersPage() {
           </div>
         </div>
       </div>
+
+      {deleteUserId && (
+        <ConfirmModal
+          title="Delete User"
+          message="Are you sure you want to delete this user? This action cannot be undone and will also delete all their borrow history."
+          onConfirm={handleDeleteUser}
+          onCancel={() => setDeleteUserId(null)}
+          confirmText={isDeleting ? "Deleting..." : "Delete"}
+          cancelText="Cancel"
+        />
+      )}
+
+      {showActiveBorrowsModal && (
+        <Modal
+          message="This user has active borrows and cannot be deleted. Please ensure all books are returned before deleting the user."
+          onClose={() => setShowActiveBorrowsModal(false)}
+        />
+      )}
     </div>
   );
 }

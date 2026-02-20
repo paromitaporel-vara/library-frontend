@@ -24,6 +24,7 @@ export default function BorrowsPage() {
   const [modalMessage, setModalMessage] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [showReturnConfirm, setShowReturnConfirm] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formData, setFormData] = useState({
     userId: "",
@@ -37,11 +38,24 @@ export default function BorrowsPage() {
     fetchData();
   }, [sortOrder]);
 
-  const fetchData = async () => {
+  useEffect(() => {
+    const delayDebounce = setTimeout(() => {
+      fetchData(searchQuery, true);
+    }, 300);
+
+    return () => clearTimeout(delayDebounce);
+  }, [searchQuery]);
+
+  const fetchData = async (query?: string, isSearching = false) => {
     try {
-      setIsLoading(true);
+      if (!isSearching) {
+        setIsLoading(true);
+      }
+      const borrowsEndpoint = query 
+        ? `/borrows/search?q=${encodeURIComponent(query)}&sortOrder=${sortOrder}`
+        : `/borrows?sortOrder=${sortOrder}`;
       const [borrowsRes, booksRes, usersRes] = await Promise.all([
-        api.get<Borrow[]>(`/borrows?sortOrder=${sortOrder}`),
+        api.get<Borrow[]>(borrowsEndpoint),
         api.get<Book[]>("/books"),
         api.get<User[]>("/users"),
       ]);
@@ -53,7 +67,9 @@ export default function BorrowsPage() {
       setError("Failed to fetch data");
       console.error(err);
     } finally {
-      setIsLoading(false);
+      if (!isSearching) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -144,7 +160,7 @@ export default function BorrowsPage() {
   };
 
   if (isLoading) {
-    return <div className="text-center py-8">Loading borrows...</div>;
+  return <div>Loading borrows...</div>;
   }
 
   return (
@@ -171,6 +187,16 @@ export default function BorrowsPage() {
           {error}
         </div>
       )}
+
+      <div className="mt-4">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by book title, author, user name, or email..."
+          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
 
       <div className="mt-8 flex flex-col">
         <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
@@ -314,10 +340,25 @@ export default function BorrowsPage() {
                 onChange={(value) => {
                   setFormData({ ...formData, bookTitle: value, bookId: "" });
                 }}
-                options={books.map((book) => ({
-                  value: book.title,
-                  label: book.title,
-                }))}
+                options={
+                  // Filter titles: if author is selected, show only titles by that author; if publisher selected, show titles by that publisher
+                  books
+                    .filter((book) => {
+                      if (formData.bookAuthor && formData.bookPublisher) {
+                        return book.author === formData.bookAuthor && book.publisher === formData.bookPublisher;
+                      } else if (formData.bookAuthor) {
+                        return book.author === formData.bookAuthor;
+                      } else if (formData.bookPublisher) {
+                        return book.publisher === formData.bookPublisher;
+                      }
+                      return true;
+                    })
+                    .map((book) => ({
+                      value: book.title,
+                      label: book.title,
+                    }))
+                    .filter((item, index, self) => self.findIndex((x) => x.value === item.value) === index)
+                }
                 placeholder="Search by title..."
               />
 
@@ -328,10 +369,25 @@ export default function BorrowsPage() {
                 onChange={(value) => {
                   setFormData({ ...formData, bookAuthor: value, bookId: "" });
                 }}
-                options={books.map((book) => ({
-                  value: book.author,
-                  label: book.author,
-                }))}
+                options={
+                  // Filter authors: if title is selected, show only authors of that title; if publisher selected, show authors published by that publisher
+                  books
+                    .filter((book) => {
+                      if (formData.bookTitle && formData.bookPublisher) {
+                        return book.title === formData.bookTitle && book.publisher === formData.bookPublisher;
+                      } else if (formData.bookTitle) {
+                        return book.title === formData.bookTitle;
+                      } else if (formData.bookPublisher) {
+                        return book.publisher === formData.bookPublisher;
+                      }
+                      return true;
+                    })
+                    .map((book) => ({
+                      value: book.author,
+                      label: book.author,
+                    }))
+                    .filter((item, index, self) => self.findIndex((x) => x.value === item.value) === index)
+                }
                 placeholder="Search by author..."
               />
 
@@ -342,13 +398,26 @@ export default function BorrowsPage() {
                 onChange={(value) => {
                   setFormData({ ...formData, bookPublisher: value, bookId: "" });
                 }}
-                options={books
-                  .filter((book) => book.publisher)
-                  .map((book) => ({
-                    value: book.publisher || "",
-                    label: book.publisher || "",
-                  }))
-                  .filter((item, index, self) => self.findIndex((x) => x.value === item.value) === index)}
+                options={
+                  // Filter publishers: if title is selected, show only publishers of that title; if author selected, show publishers of that author
+                  books
+                    .filter((book) => {
+                      if (formData.bookTitle && formData.bookAuthor) {
+                        return book.title === formData.bookTitle && book.author === formData.bookAuthor;
+                      } else if (formData.bookTitle) {
+                        return book.title === formData.bookTitle;
+                      } else if (formData.bookAuthor) {
+                        return book.author === formData.bookAuthor;
+                      }
+                      return true;
+                    })
+                    .filter((book) => book.publisher)
+                    .map((book) => ({
+                      value: book.publisher || "",
+                      label: book.publisher || "",
+                    }))
+                    .filter((item, index, self) => self.findIndex((x) => x.value === item.value) === index)
+                }
                 placeholder="Search by publisher..."
               />
 

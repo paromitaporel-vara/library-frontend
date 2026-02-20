@@ -13,6 +13,7 @@ export default function BooksPage() {
   const [error, setError] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalMessage, setModalMessage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     title: "",
     author: "",
@@ -24,17 +25,30 @@ export default function BooksPage() {
     fetchBooks();
   }, []);
 
-  const fetchBooks = async () => {
+  useEffect(() => {
+    const delayDebounce = setTimeout(() => {
+      fetchBooks(searchQuery, true);
+    }, 300);
+
+    return () => clearTimeout(delayDebounce);
+  }, [searchQuery]);
+
+  const fetchBooks = async (query?: string, isSearching = false) => {
     try {
-      setIsLoading(true);
-      const response = await api.get<Book[]>("/books");
+      if (!isSearching) {
+        setIsLoading(true);
+      }
+      const endpoint = query ? `/books/search?q=${encodeURIComponent(query)}` : '/books';
+      const response = await api.get<Book[]>(endpoint);
       setBooks(response.data);
       setError("");
     } catch (err: any) {
       setError("Failed to fetch books");
       console.error(err);
     } finally {
-      setIsLoading(false);
+      if (!isSearching) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -102,6 +116,16 @@ export default function BooksPage() {
           {error}
         </div>
       )}
+
+      <div className="mt-4">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by title, author, or publisher..."
+          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
 
       <div className="mt-8 flex flex-col">
         <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">

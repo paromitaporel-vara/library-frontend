@@ -22,6 +22,7 @@ export default function ProfilePage() {
   const [emailOtp, setEmailOtp] = useState("");
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [emailOtpVerified, setEmailOtpVerified] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
 
   // Change password states
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -77,12 +78,22 @@ export default function ProfilePage() {
   };
 
   const handleSendEmailOtp = async () => {
+    if (!newEmail) {
+      setModalMessage("Please enter a new email address");
+      return;
+    }
+
     try {
-      await api.post("/users/profile/send-email-change-otp");
-      setModalMessage("OTP sent to your current email");
+      setSendingOtp(true);
+      await api.post("/users/profile/send-email-change-otp", {
+        newEmail,
+      });
+      setModalMessage("OTP sent to new email");
       setEmailOtpSent(true);
     } catch (err: any) {
       setModalMessage(err.response?.data?.message || "Failed to send OTP");
+    } finally {
+      setSendingOtp(false);
     }
   };
 
@@ -222,8 +233,14 @@ export default function ProfilePage() {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setModalMessage("Profile photo updated successfully");
-      fetchUserData();
-      checkAuth();
+      // Fetch updated user
+        const updatedUser = await api.get(`/users/${authUser?.id}`);
+
+        // Update profile page state
+        setUserData(updatedUser.data);
+
+        // Update global auth state (this fixes navbar icon instantly)
+        useAuthStore.setState({ user: updatedUser.data });
     } catch (err: any) {
       setModalMessage(err.response?.data?.message || "Failed to upload photo");
     } finally {
@@ -270,7 +287,7 @@ export default function ProfilePage() {
               <Dialog>
                 <DialogTrigger asChild>
                   <img
-                    src={`http://localhost:3000${userData.profilePhoto}`}
+                    src={`http://localhost:3000${userData.profilePhoto}?t=${Date.now()}`}
                     alt="Profile"
                     className="w-24 h-24 rounded-full object-cover cursor-pointer hover:opacity-80 transition"
                   />
@@ -279,7 +296,7 @@ export default function ProfilePage() {
                 <DialogContent className="max-w-none w-screen h-screen border-0 shadow-none flex items-center justify-center p-0">
                   <div className="relative flex items-center justify-center w-full h-full">
                     <img
-                      src={`http://localhost:3000${userData.profilePhoto}`}
+                      src={`http://localhost:3000${userData.profilePhoto}?t=${Date.now()}`}
                       alt="Full Profile"
                       className="max-h-[90vh] max-w-[90vw] object-contain rounded-md"
                     />
@@ -388,19 +405,52 @@ export default function ProfilePage() {
             {isEditingEmail ? (
               <div className="space-y-2 mt-1">
                 {!emailOtpSent ? (
-                  <button
-                    onClick={handleSendEmailOtp}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    Send OTP to Current Email
-                  </button>
+                  <>
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="Enter new email address"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      disabled={sendingOtp}
+                    />
+                    {sendingOtp && (
+                      <div className="flex items-center gap-2 py-2">
+                        <div className="animate-spin">
+                          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0119.8-4.3M22 12.5a10 10 0 01-19.8 4.2" />
+                          </svg>
+                        </div>
+                        <span className="text-sm text-gray-600">Sending OTP...</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={handleSendEmailOtp}
+                      disabled={sendingOtp}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {sendingOtp ? "Sending OTP..." : "Send OTP to New Email"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditingEmail(false);
+                        setEmailOtpSent(false);
+                        setEmailOtpVerified(false);
+                        setEmailOtp("");
+                        setNewEmail("");
+                      }}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 w-full mt-2"
+                    >
+                      Cancel
+                    </button>
+                  </>
                 ) : !emailOtpVerified ? (
                   <>
                     <input
                       type="text"
                       value={emailOtp}
                       onChange={(e) => setEmailOtp(e.target.value)}
-                      placeholder="Enter OTP sent to your email"
+                      placeholder="Enter OTP sent to your new email"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
                     />
                     <div className="flex gap-2">
@@ -426,19 +476,15 @@ export default function ProfilePage() {
                   </>
                 ) : (
                   <>
-                    <input
-                      type="email"
-                      value={newEmail}
-                      onChange={(e) => setNewEmail(e.target.value)}
-                      placeholder="Enter new email address"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
+                    <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-md mb-2">
+                      Changing email to: <strong>{newEmail}</strong>
+                    </div>
                     <div className="flex gap-2">
                       <button
                         onClick={handleChangeEmail}
                         className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                       >
-                        Update Email
+                        Confirm Email Change
                       </button>
                       <button
                         onClick={() => {
