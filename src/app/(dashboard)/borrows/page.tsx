@@ -1,21 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import api from "@/lib/api";
-import { Borrow, Book, User } from "@/types";
+import { Borrow } from "@/types";
 import { useAuthStore } from "@/lib/auth";
 import Modal from "@/components/Modal";
 import ConfirmModal from "@/components/ConfirmModal";
 import SearchableSelect from "@/components/SearchableSelect";
 
+interface Option {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
 export default function BorrowsPage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === "ADMIN";
 
+  // State
   const [borrows, setBorrows] = useState<Borrow[]>([]);
-  const [books, setBooks] = useState<Book[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -24,51 +30,46 @@ export default function BorrowsPage() {
   const [modalMessage, setModalMessage] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [showReturnConfirm, setShowReturnConfirm] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  
+  const [searchQuery, setSearchQuery] = useState("");
+
   const [formData, setFormData] = useState({
     userId: "",
-    bookId: "",
     bookTitle: "",
     bookAuthor: "",
     bookPublisher: "",
   });
 
   useEffect(() => {
-    fetchData();
+    fetchBorrows();
   }, [sortOrder]);
 
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
-      fetchData(searchQuery, true);
+      fetchBorrows(searchQuery);
     }, 300);
 
     return () => clearTimeout(delayDebounce);
-  }, [searchQuery]);
+  }, [searchQuery, sortOrder]);
 
-  const fetchData = async (query?: string, isSearching = false) => {
+  const fetchBorrows = async (query?: string) => {
     try {
-      if (!isSearching) {
+      // Only show loading indicator on initial load
+      if (isInitialLoad) {
         setIsLoading(true);
       }
-      const borrowsEndpoint = query 
+      const endpoint = query
         ? `/borrows/search?q=${encodeURIComponent(query)}&sortOrder=${sortOrder}`
         : `/borrows?sortOrder=${sortOrder}`;
-      const [borrowsRes, booksRes, usersRes] = await Promise.all([
-        api.get<Borrow[]>(borrowsEndpoint),
-        api.get<Book[]>("/books"),
-        api.get<User[]>("/users"),
-      ]);
-      setBorrows(borrowsRes.data);
-      setBooks(booksRes.data);
-      setUsers(usersRes.data);
+      const response = await api.get<Borrow[]>(endpoint);
+      setBorrows(response.data);
       setError("");
     } catch (err: any) {
-      setError("Failed to fetch data");
+      setError("Failed to fetch borrows");
       console.error(err);
     } finally {
-      if (!isSearching) {
+      if (isInitialLoad) {
         setIsLoading(false);
+        setIsInitialLoad(false);
       }
     }
   };
@@ -77,26 +78,105 @@ export default function BorrowsPage() {
     setSortOrder(sortOrder === "desc" ? "asc" : "desc");
   };
 
+  const handleUserSearch = useCallback(async (query: string): Promise<Option[]> => {
+    try {
+      const endpoint = query.trim()
+        ? `/users/search-for-borrow?q=${encodeURIComponent(query)}`
+        : "/users";
+      const response = await api.get<any[]>(endpoint);
+      return response.data.map((user) => ({
+        value: user.id,
+        label: user.name || user.email,
+      }));
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+      return [];
+    }
+  }, []);
+
+  const handleTitleSearch = useCallback(async (query: string): Promise<Option[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (query.trim()) params.append("q", query);
+      if (formData.bookAuthor) params.append("author", formData.bookAuthor);
+      if (formData.bookPublisher) params.append("publisher", formData.bookPublisher);
+
+      const endpoint = `/books/search-titles${params.toString() ? "?" + params.toString() : ""}`;
+      const response = await api.get<{ title: string }[]>(endpoint);
+      return response.data.map((item) => ({
+        value: item.title,
+        label: item.title,
+      }));
+    } catch (error) {
+      console.error("Failed to search titles:", error);
+      return [];
+    }
+  }, [formData.bookAuthor, formData.bookPublisher]);
+
+  const handleAuthorSearch = useCallback(async (query: string): Promise<Option[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (query.trim()) params.append("q", query);
+      if (formData.bookTitle) params.append("title", formData.bookTitle);
+      if (formData.bookPublisher) params.append("publisher", formData.bookPublisher);
+
+      const endpoint = `/books/search-authors${params.toString() ? "?" + params.toString() : ""}`;
+      const response = await api.get<{ author: string }[]>(endpoint);
+      return response.data.map((item) => ({
+        value: item.author,
+        label: item.author,
+      }));
+    } catch (error) {
+      console.error("Failed to search authors:", error);
+      return [];
+    }
+  }, [formData.bookTitle, formData.bookPublisher]);
+
+  const handlePublisherSearch = useCallback(async (query: string): Promise<Option[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (query.trim()) params.append("q", query);
+      if (formData.bookTitle) params.append("title", formData.bookTitle);
+      if (formData.bookAuthor) params.append("author", formData.bookAuthor);
+
+      const endpoint = `/books/search-publishers${params.toString() ? "?" + params.toString() : ""}`;
+      const response = await api.get<{ publisher: string }[]>(endpoint);
+      return response.data
+        .filter((item) => item.publisher)
+        .map((item) => ({
+          value: item.publisher,
+          label: item.publisher,
+        }));
+    } catch (error) {
+      console.error("Failed to search publishers:", error);
+      return [];
+    }
+  }, [formData.bookTitle, formData.bookAuthor]);
+
+  
   const handleCreateBorrow = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post("/borrows", {
-        userId: formData.userId,
-        bookId: formData.bookId,
-      });
+      const payload: any = {
+        bookTitle: formData.bookTitle,
+        bookAuthor: formData.bookAuthor,
+        bookPublisher: formData.bookPublisher,
+      };
+
+      if (isAdmin && formData.userId) {
+        payload.userId = formData.userId;
+      }
+
+      await api.post("/borrows/by-details", payload);
       setShowAddModal(false);
-      setFormData({ userId: "", bookId: "", bookTitle: "", bookAuthor: "", bookPublisher: "" });
-      fetchData();
+      setFormData({ userId: "", bookTitle: "", bookAuthor: "", bookPublisher: "" });
+      fetchBorrows();
     } catch (err: any) {
       setModalMessage(err.response?.data?.message || "Failed to create borrow");
     }
   };
 
   const handleEditBorrow = (borrow: Borrow) => {
-    if (!isAdmin) {
-      setModalMessage("Only admins can edit borrows");
-      return;
-    }
     setEditingBorrow(borrow);
     setEditDueDate(borrow.dueDate.split("T")[0]);
     setShowEditModal(true);
@@ -110,22 +190,11 @@ export default function BorrowsPage() {
       await api.patch(`/borrows/${editingBorrow.id}`, {
         dueDate: editDueDate,
       });
-
       setShowEditModal(false);
-      setEditingBorrow(null);
-      fetchData();
+      fetchBorrows();
     } catch (err: any) {
       setModalMessage(err.response?.data?.message || "Failed to update borrow");
     }
-  };
-
-  const handleReturnBook = async (id: string) => {
-    if (!isAdmin) {
-      setModalMessage("Only admins can mark books as returned");
-      return;
-    }
-
-    setShowReturnConfirm(id);
   };
 
   const confirmReturnBook = async () => {
@@ -134,19 +203,18 @@ export default function BorrowsPage() {
     try {
       await api.patch(`/borrows/${showReturnConfirm}/return`);
       setShowReturnConfirm(null);
-      fetchData();
+      fetchBorrows();
     } catch (err: any) {
       setModalMessage(err.response?.data?.message || "Failed to return book");
-      setShowReturnConfirm(null);
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case "ACTIVE":
-        return "bg-blue-100 text-blue-800";
-      case "RETURNED":
         return "bg-green-100 text-green-800";
+      case "RETURNED":
+        return "bg-blue-100 text-blue-800";
       case "OVERDUE":
         return "bg-red-100 text-red-800";
       default:
@@ -154,13 +222,8 @@ export default function BorrowsPage() {
     }
   };
 
-  const getAvailableCopies = (book: Book) => {
-    const activeBorrows = book.borrows?.filter(b => !b.returnedAt).length || 0;
-    return book.copies - activeBorrows;
-  };
-
   if (isLoading) {
-  return <div>Loading borrows...</div>;
+    return <div>Loading borrows...</div>;
   }
 
   return (
@@ -168,9 +231,7 @@ export default function BorrowsPage() {
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
           <h1 className="text-2xl font-semibold text-gray-900">Borrows</h1>
-          <p className="mt-2 text-sm text-gray-700">
-            Manage book borrowing and returns
-          </p>
+          <p className="mt-2 text-sm text-gray-700">Manage book borrowing and returns</p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           <button
@@ -199,113 +260,99 @@ export default function BorrowsPage() {
       </div>
 
       <div className="mt-8 flex flex-col">
-        <div className="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
-          <div className="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-              <table className="min-w-full divide-y divide-gray-300">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Book
-                    </th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      User
-                    </th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      <button
-                        onClick={toggleSortOrder}
-                        className="flex items-center gap-1 hover:text-blue-600"
-                      >
-                        Borrow Date
-                        {sortOrder === "desc" ? (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                          </svg>
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Due Date
-                    </th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Return Date
-                    </th>
-                    <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Status
-                    </th>
-                    <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {borrows.map((borrow) => (
-                    <tr key={borrow.id}>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {borrow.book?.title || "Unknown"}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {borrow.user?.name || borrow.user?.email || "Unknown"}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {new Date(borrow.borrowedAt).toLocaleDateString()}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {new Date(borrow.dueDate).toLocaleDateString()}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {borrow.returnedAt
-                          ? new Date(borrow.returnedAt).toLocaleDateString()
-                          : "-"}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm">
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full ${getStatusColor(borrow.status)}`}
-                        >
-                          {borrow.status}
-                        </span>
-                      </td>
-                      <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                        <div className="flex gap-3 justify-end">
-                          {isAdmin && borrow.status !== "RETURNED" && (
+        <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+          <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+            <table className="min-w-full divide-y divide-gray-300 border border-gray-300">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Book</th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">User</th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <button
+                      onClick={toggleSortOrder}
+                      className="flex items-center gap-2 hover:text-blue-600"
+                    >
+                      Borrowed
+                      {sortOrder === "desc" ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      )}
+                    </button>
+                  </th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Due Date</th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Return Date</th>
+                  <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
+                  <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                {borrows.map((borrow) => (
+                  <tr key={borrow.id}>
+                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                      {borrow.book?.title || "Unknown"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                      {borrow.user?.name || borrow.user?.email || "Unknown"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                      {new Date(borrow.borrowedAt).toLocaleDateString()}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                      {new Date(borrow.dueDate).toLocaleDateString()}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                      {borrow.returnedAt ? new Date(borrow.returnedAt).toLocaleDateString() : "-"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-4 text-sm">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(borrow.status)}`}>
+                        {borrow.status}
+                      </span>
+                    </td>
+                    <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                      <div className="flex gap-2">
+                        {isAdmin && (
+                          <>
                             <button
                               onClick={() => handleEditBorrow(borrow)}
                               className="text-blue-600 hover:text-blue-900"
+                              disabled={borrow.returnedAt !== null}
                             >
                               Edit
                             </button>
-                          )}
-
-                          {isAdmin && borrow.status === "ACTIVE" && (
-                            <button
-                              onClick={() => handleReturnBook(borrow.id)}
-                              className="text-green-600 hover:text-green-900"
-                            >
-                              Return
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                            {!borrow.returnedAt && (
+                              <button
+                                onClick={() => setShowReturnConfirm(borrow.id)}
+                                className="text-green-600 hover:text-green-900"
+                              >
+                                Return
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
       {modalMessage && (
-        <Modal message={modalMessage} onClose={() => setModalMessage(null)} />
+        <Modal onClose={() => setModalMessage(null)} message={modalMessage} />
       )}
 
       {showReturnConfirm && (
         <ConfirmModal
-          title="Confirm Return"
+          title="Return Book"
           message="Are you sure you want to mark this book as returned? This will calculate any applicable fines."
           onConfirm={confirmReturnBook}
           onCancel={() => setShowReturnConfirm(null)}
@@ -325,40 +372,21 @@ export default function BorrowsPage() {
                   required
                   value={formData.userId}
                   onChange={(value) => setFormData({ ...formData, userId: value })}
-                  options={users.map((user) => ({
-                    value: user.id,
-                    label: user.name || user.email,
-                  }))}
+                  onSearch={handleUserSearch}
+                  options={[]}
                   placeholder="Search by name or email..."
                 />
               )}
-              
+
               <SearchableSelect
                 label="Book Title"
                 required
                 value={formData.bookTitle}
                 onChange={(value) => {
-                  setFormData({ ...formData, bookTitle: value, bookId: "" });
+                  setFormData({ ...formData, bookTitle: value });
                 }}
-                options={
-                  // Filter titles: if author is selected, show only titles by that author; if publisher selected, show titles by that publisher
-                  books
-                    .filter((book) => {
-                      if (formData.bookAuthor && formData.bookPublisher) {
-                        return book.author === formData.bookAuthor && book.publisher === formData.bookPublisher;
-                      } else if (formData.bookAuthor) {
-                        return book.author === formData.bookAuthor;
-                      } else if (formData.bookPublisher) {
-                        return book.publisher === formData.bookPublisher;
-                      }
-                      return true;
-                    })
-                    .map((book) => ({
-                      value: book.title,
-                      label: book.title,
-                    }))
-                    .filter((item, index, self) => self.findIndex((x) => x.value === item.value) === index)
-                }
+                onSearch={handleTitleSearch}
+                options={[]}
                 placeholder="Search by title..."
               />
 
@@ -367,27 +395,10 @@ export default function BorrowsPage() {
                 required
                 value={formData.bookAuthor}
                 onChange={(value) => {
-                  setFormData({ ...formData, bookAuthor: value, bookId: "" });
+                  setFormData({ ...formData, bookAuthor: value });
                 }}
-                options={
-                  // Filter authors: if title is selected, show only authors of that title; if publisher selected, show authors published by that publisher
-                  books
-                    .filter((book) => {
-                      if (formData.bookTitle && formData.bookPublisher) {
-                        return book.title === formData.bookTitle && book.publisher === formData.bookPublisher;
-                      } else if (formData.bookTitle) {
-                        return book.title === formData.bookTitle;
-                      } else if (formData.bookPublisher) {
-                        return book.publisher === formData.bookPublisher;
-                      }
-                      return true;
-                    })
-                    .map((book) => ({
-                      value: book.author,
-                      label: book.author,
-                    }))
-                    .filter((item, index, self) => self.findIndex((x) => x.value === item.value) === index)
-                }
+                onSearch={handleAuthorSearch}
+                options={[]}
                 placeholder="Search by author..."
               />
 
@@ -396,56 +407,13 @@ export default function BorrowsPage() {
                 required
                 value={formData.bookPublisher}
                 onChange={(value) => {
-                  setFormData({ ...formData, bookPublisher: value, bookId: "" });
+                  setFormData({ ...formData, bookPublisher: value });
                 }}
-                options={
-                  // Filter publishers: if title is selected, show only publishers of that title; if author selected, show publishers of that author
-                  books
-                    .filter((book) => {
-                      if (formData.bookTitle && formData.bookAuthor) {
-                        return book.title === formData.bookTitle && book.author === formData.bookAuthor;
-                      } else if (formData.bookTitle) {
-                        return book.title === formData.bookTitle;
-                      } else if (formData.bookAuthor) {
-                        return book.author === formData.bookAuthor;
-                      }
-                      return true;
-                    })
-                    .filter((book) => book.publisher)
-                    .map((book) => ({
-                      value: book.publisher || "",
-                      label: book.publisher || "",
-                    }))
-                    .filter((item, index, self) => self.findIndex((x) => x.value === item.value) === index)
-                }
+                onSearch={handlePublisherSearch}
+                options={[]}
                 placeholder="Search by publisher..."
               />
 
-              {formData.bookTitle && formData.bookAuthor && formData.bookPublisher && (
-                <SearchableSelect
-                  label="Select Book"
-                  required
-                  value={formData.bookId}
-                  onChange={(value) => setFormData({ ...formData, bookId: value })}
-                  options={books
-                    .filter(
-                      (book) =>
-                        book.title === formData.bookTitle &&
-                        book.author === formData.bookAuthor &&
-                        book.publisher === formData.bookPublisher
-                    )
-                    .map((book) => {
-                      const availableCopies = getAvailableCopies(book);
-                      return {
-                        value: book.id,
-                        label: `${availableCopies > 0 ? `${availableCopies} available` : 'Not Available'}`,
-                        disabled: availableCopies === 0,
-                      };
-                    })}
-                  placeholder="Select a book..."
-                />
-              )}
-              
               <div className="flex gap-2 mt-6">
                 <button
                   type="submit"
@@ -457,7 +425,7 @@ export default function BorrowsPage() {
                   type="button"
                   onClick={() => {
                     setShowAddModal(false);
-                    setFormData({ userId: "", bookId: "", bookTitle: "", bookAuthor: "", bookPublisher: "" });
+                    setFormData({ userId: "", bookTitle: "", bookAuthor: "", bookPublisher: "" });
                   }}
                   className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
                 >
@@ -475,9 +443,7 @@ export default function BorrowsPage() {
             <h2 className="text-2xl font-bold mb-4">Edit Due Date</h2>
             <form onSubmit={handleUpdateBorrow} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Due Date *
-                </label>
+                <label className="block text-sm font-medium text-gray-700">Due Date *</label>
                 <input
                   type="date"
                   required

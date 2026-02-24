@@ -13,6 +13,8 @@ interface SearchableSelectProps {
   placeholder?: string;
   label?: string;
   required?: boolean;
+  onSearch?: (query: string) => Promise<Option[]>;
+  isLoading?: boolean;
 }
 
 export default function SearchableSelect({
@@ -22,21 +24,106 @@ export default function SearchableSelect({
   placeholder = "Select an option",
   label,
   required = false,
+  onSearch,
+  isLoading = false,
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [displayOptions, setDisplayOptions] = useState<Option[]>(options);
+  const [selectedOption, setSelectedOption] = useState<Option | null>(null);
+  const [localLoading, setLocalLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const initialFetchDoneRef = useRef(false);
 
-  const filteredOptions = options.filter(option =>
-    option.label.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
-  const selectedOption = options.find(opt => opt.value === value);
+  useEffect(() => {
+    if (onSearch && isOpen && !initialFetchDoneRef.current && searchTerm === '') {
+      setLocalLoading(true);
+      onSearch('')
+        .then((results) => {
+          setDisplayOptions(results);
+          initialFetchDoneRef.current = true;
+        })
+        .catch((error) => {
+          console.error('Initial fetch error:', error);
+          setDisplayOptions([]);
+        })
+        .finally(() => {
+          setLocalLoading(false);
+        });
+    }
+  }, [isOpen, onSearch]);
+
+  
+  useEffect(() => {
+    if (!onSearch) {
+      const filtered = options.filter(option =>
+        option.label.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setDisplayOptions(filtered);
+    }
+  }, [options, searchTerm, onSearch]);
+
+
+  useEffect(() => {
+    if (!onSearch) return;
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (!searchTerm.trim()) {
+      return;
+    }
+
+    setLocalLoading(true);
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await onSearch(searchTerm);
+        setDisplayOptions(results);
+      } catch (error) {
+        console.error('Search error:', error);
+        setDisplayOptions([]);
+      } finally {
+        setLocalLoading(false);
+      }
+    }, 300); 
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [searchTerm, onSearch]);
+
+  const filteredOptions = displayOptions;
+
+
+  useEffect(() => {
+    if (!value) {
+      setSelectedOption(null);
+      return;
+    }
+
+    if (onSearch && displayOptions.length > 0) {
+      const found = displayOptions.find(opt => opt.value === value);
+      if (found) {
+        setSelectedOption(found);
+      }
+    } else {
+      const found = options.find(opt => opt.value === value);
+      if (found) {
+        setSelectedOption(found);
+      }
+    }
+  }, [value, displayOptions, options, onSearch]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        
+        initialFetchDoneRef.current = false;
       }
     };
 
@@ -73,7 +160,9 @@ export default function SearchableSelect({
 
       {isOpen && (
         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-          {filteredOptions.length === 0 ? (
+          {localLoading || isLoading ? (
+            <div className="px-3 py-2 text-sm text-gray-500">Loading...</div>
+          ) : filteredOptions.length === 0 ? (
             <div className="px-3 py-2 text-sm text-gray-500">No options found</div>
           ) : (
             filteredOptions.map((option) => (
@@ -82,6 +171,7 @@ export default function SearchableSelect({
                 onClick={() => {
                   if (!option.disabled) {
                     onChange(option.value);
+                    setSelectedOption(option);
                     setSearchTerm('');
                     setIsOpen(false);
                   }
