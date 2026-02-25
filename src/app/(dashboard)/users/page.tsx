@@ -2,9 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
-import { User } from '@/types';
+import { User, PaginatedResponse, PaginationMeta } from '@/types';
+import { useDebounce } from '@/hooks/use-debounce';
 import ConfirmModal from '@/components/ConfirmModal';
 import Modal from '@/components/Modal';
+import DataPagination from '@/components/DataPagination';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -14,27 +18,35 @@ export default function UsersPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showActiveBorrowsModal, setShowActiveBorrowsModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | null>(null);
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
   useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      fetchUsers(searchQuery, true);
-    }, 300);
+    setCurrentPage(1);
+  }, [debouncedSearch]);
 
-    return () => clearTimeout(delayDebounce);
-  }, [searchQuery]);
+  useEffect(() => {
+    fetchUsers(debouncedSearch, true);
+  }, [debouncedSearch, currentPage]);
 
   const fetchUsers = async (query?: string, isSearching = false) => {
     try {
       if (!isSearching) {
         setIsLoading(true);
       }
-      const endpoint = query ? `/users/search?q=${encodeURIComponent(query)}` : '/users';
-      const response = await api.get<User[]>(endpoint);
-      setUsers(response.data);
+      const params = new URLSearchParams();
+      params.append('page', String(currentPage));
+      params.append('limit', '10');
+      if (query) params.append('q', query);
+      const endpoint = query ? `/users/search?${params}` : `/users?${params}`;
+      const response = await api.get<PaginatedResponse<User>>(endpoint);
+      setUsers(response.data.data);
+      setPaginationMeta(response.data.meta);
       setError('');
     } catch (err: any) {
       setError('Failed to fetch users');
@@ -88,12 +100,11 @@ export default function UsersPage() {
       )}
 
       <div className="mt-4">
-        <input
+        <Input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by name or email..."
-          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
@@ -131,12 +142,14 @@ export default function UsersPage() {
                         {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
                       </td>
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => setDeleteUserId(user.id)}
                           className="text-red-600 hover:text-red-900"
                         >
                           Delete
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -146,6 +159,10 @@ export default function UsersPage() {
           </div>
         </div>
       </div>
+
+      {paginationMeta && (
+        <DataPagination meta={paginationMeta} onPageChange={setCurrentPage} />
+      )}
 
       {deleteUserId && (
         <ConfirmModal

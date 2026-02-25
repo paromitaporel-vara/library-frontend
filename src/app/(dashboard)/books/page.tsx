@@ -2,9 +2,21 @@
 
 import { useState, useEffect } from "react";
 import api from "@/lib/api";
-import { Book } from "@/types";
+import { Book, PaginatedResponse, PaginationMeta } from "@/types";
 import { useAuthStore } from "@/lib/auth";
+import { useDebounce } from "@/hooks/use-debounce";
 import Modal from "@/components/Modal";
+import DataPagination from "@/components/DataPagination";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export default function BooksPage() {
   const { user } = useAuthStore();
@@ -14,6 +26,9 @@ export default function BooksPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalMessage, setModalMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     author: "",
@@ -26,21 +41,26 @@ export default function BooksPage() {
   }, []);
 
   useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      fetchBooks(searchQuery, true);
-    }, 300);
+    setCurrentPage(1);
+  }, [debouncedSearch]);
 
-    return () => clearTimeout(delayDebounce);
-  }, [searchQuery]);
+  useEffect(() => {
+    fetchBooks(debouncedSearch, true);
+  }, [debouncedSearch, currentPage]);
 
   const fetchBooks = async (query?: string, isSearching = false) => {
     try {
       if (!isSearching) {
         setIsLoading(true);
       }
-      const endpoint = query ? `/books/search?q=${encodeURIComponent(query)}` : '/books';
-      const response = await api.get<Book[]>(endpoint);
-      setBooks(response.data);
+      const params = new URLSearchParams();
+      params.append('page', String(currentPage));
+      params.append('limit', '10');
+      if (query) params.append('q', query);
+      const endpoint = query ? `/books/search?${params}` : `/books?${params}`;
+      const response = await api.get<PaginatedResponse<Book>>(endpoint);
+      setBooks(response.data.data);
+      setPaginationMeta(response.data.meta);
       setError("");
     } catch (err: any) {
       setError("Failed to fetch books");
@@ -101,12 +121,9 @@ export default function BooksPage() {
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
           {user?.role === "ADMIN" && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-            >
+            <Button onClick={() => setShowAddModal(true)}>
               Add Book
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -118,12 +135,11 @@ export default function BooksPage() {
       )}
 
       <div className="mt-4">
-        <input
+        <Input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by title, author, or publisher..."
-          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
@@ -193,12 +209,14 @@ export default function BooksPage() {
 
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                         {user?.role === "ADMIN" && (
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => handleDeleteBook(book.id)}
                             className="text-red-600 hover:text-red-900"
                           >
                             Delete
-                          </button>
+                          </Button>
                         )}
                       </td>
                     </tr>
@@ -210,96 +228,85 @@ export default function BooksPage() {
         </div>
       </div>
 
-      {showAddModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold mb-4">Add New Book</h2>
-            <form onSubmit={handleAddBook} className="space-y-4">
-              <div>
-                {modalMessage && (
-                  <Modal
-                    message={modalMessage}
-                    onClose={() => setModalMessage(null)}
-                  />
-                )}
-
-                <label className="block text-sm font-medium text-gray-700">
-                  Title *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.title}
-                  onChange={(e) =>
-                    setFormData({ ...formData, title: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Author *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.author}
-                  onChange={(e) =>
-                    setFormData({ ...formData, author: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Publisher
-                </label>
-                <input
-                  type="text"
-                  value={formData.publisher}
-                  onChange={(e) =>
-                    setFormData({ ...formData, publisher: e.target.value })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Copies *
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={formData.copies}
-                  onChange={(e) =>
-                    setFormData({ ...formData, copies: Number(e.target.value) })
-                  }
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-
-              <div className="flex gap-2 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Add Book
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {paginationMeta && (
+        <DataPagination meta={paginationMeta} onPageChange={setCurrentPage} />
       )}
+
+      <Dialog open={showAddModal} onOpenChange={(open) => !open && setShowAddModal(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Book</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddBook} className="space-y-4">
+            {modalMessage && (
+              <Modal
+                message={modalMessage}
+                onClose={() => setModalMessage(null)}
+              />
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="title">Title *</Label>
+              <Input
+                id="title"
+                type="text"
+                required
+                value={formData.title}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="author">Author *</Label>
+              <Input
+                id="author"
+                type="text"
+                required
+                value={formData.author}
+                onChange={(e) =>
+                  setFormData({ ...formData, author: e.target.value })
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="publisher">Publisher</Label>
+              <Input
+                id="publisher"
+                type="text"
+                value={formData.publisher}
+                onChange={(e) =>
+                  setFormData({ ...formData, publisher: e.target.value })
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="copies">Copies *</Label>
+              <Input
+                id="copies"
+                type="number"
+                required
+                min={1}
+                value={formData.copies}
+                onChange={(e) =>
+                  setFormData({ ...formData, copies: Number(e.target.value) })
+                }
+              />
+            </div>
+
+            <DialogFooter>
+              <Button type="submit">Add Book</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAddModal(false)}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

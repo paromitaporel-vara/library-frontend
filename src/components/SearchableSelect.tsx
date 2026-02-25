@@ -1,4 +1,24 @@
-import { useState, useRef, useEffect } from 'react';
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useDebounce } from "@/hooks/use-debounce";
+import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Label } from "@/components/ui/label";
 
 interface Option {
   value: string;
@@ -27,169 +47,120 @@ export default function SearchableSelect({
   onSearch,
   isLoading = false,
 }: SearchableSelectProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [displayOptions, setDisplayOptions] = useState<Option[]>(options);
-  const [selectedOption, setSelectedOption] = useState<Option | null>(null);
+  const [open, setOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [remoteOptions, setRemoteOptions] = useState<Option[]>([]);
   const [localLoading, setLocalLoading] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const initialFetchDoneRef = useRef(false);
 
+  const debouncedSearch = useDebounce(searchTerm, 300);
 
+  // Fetch remote options when the debounced search term or open state changes
   useEffect(() => {
-    if (onSearch && isOpen && !initialFetchDoneRef.current && searchTerm === '') {
-      setLocalLoading(true);
-      onSearch('')
-        .then((results) => {
-          setDisplayOptions(results);
-          initialFetchDoneRef.current = true;
-        })
-        .catch((error) => {
-          console.error('Initial fetch error:', error);
-          setDisplayOptions([]);
-        })
-        .finally(() => {
-          setLocalLoading(false);
-        });
-    }
-  }, [isOpen, onSearch]);
+    if (!onSearch || !open) return;
 
-  
-  useEffect(() => {
-    if (!onSearch) {
-      const filtered = options.filter(option =>
-        option.label.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setDisplayOptions(filtered);
-    }
-  }, [options, searchTerm, onSearch]);
-
-
-  useEffect(() => {
-    if (!onSearch) return;
-
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    if (!searchTerm.trim()) {
-      return;
-    }
-
+    let cancelled = false;
     setLocalLoading(true);
-    debounceTimerRef.current = setTimeout(async () => {
-      try {
-        const results = await onSearch(searchTerm);
-        setDisplayOptions(results);
-      } catch (error) {
-        console.error('Search error:', error);
-        setDisplayOptions([]);
-      } finally {
-        setLocalLoading(false);
-      }
-    }, 300); 
+
+    onSearch(debouncedSearch)
+      .then((results) => {
+        if (!cancelled) setRemoteOptions(results);
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLocalLoading(false);
+      });
+
     return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
+      cancelled = true;
     };
-  }, [searchTerm, onSearch]);
+  }, [debouncedSearch, open, onSearch]);
 
-  const filteredOptions = displayOptions;
+  // For local-only mode, filter the static options
+  const displayOptions = useMemo(() => {
+    if (onSearch) return remoteOptions;
+    if (!searchTerm) return options;
+    return options.filter((opt) =>
+      opt.label.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [onSearch, remoteOptions, options, searchTerm]);
 
+  // Derive the display label for the selected value
+  const selectedLabel = useMemo(() => {
+    const found =
+      displayOptions.find((o) => o.value === value) ??
+      options.find((o) => o.value === value);
+    return found?.label;
+  }, [value, displayOptions, options]);
 
-  useEffect(() => {
-    if (!value) {
-      setSelectedOption(null);
-      return;
-    }
-
-    if (onSearch && displayOptions.length > 0) {
-      const found = displayOptions.find(opt => opt.value === value);
-      if (found) {
-        setSelectedOption(found);
-      }
-    } else {
-      const found = options.find(opt => opt.value === value);
-      if (found) {
-        setSelectedOption(found);
-      }
-    }
-  }, [value, displayOptions, options, onSearch]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        
-        initialFetchDoneRef.current = false;
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const loading = localLoading || isLoading;
 
   return (
-    <div ref={containerRef} className="relative">
+    <div className="flex flex-col gap-1.5">
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {label} {required && '*'}
-        </label>
+        <Label>
+          {label} {required && <span className="text-destructive">*</span>}
+        </Label>
       )}
-      
-      <div className="relative">
-        <input
-          type="text"
-          value={isOpen ? searchTerm : (selectedOption?.label || '')}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            if (!isOpen) setIsOpen(true);
-          }}
-          onFocus={() => setIsOpen(true)}
-          placeholder={placeholder}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-        />
-        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-          <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </div>
 
-      {isOpen && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-          {localLoading || isLoading ? (
-            <div className="px-3 py-2 text-sm text-gray-500">Loading...</div>
-          ) : filteredOptions.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-gray-500">No options found</div>
-          ) : (
-            filteredOptions.map((option) => (
-              <div
-                key={option.value}
-                onClick={() => {
-                  if (!option.disabled) {
-                    onChange(option.value);
-                    setSelectedOption(option);
-                    setSearchTerm('');
-                    setIsOpen(false);
-                  }
-                }}
-                className={`px-3 py-2 cursor-pointer text-sm ${
-                  option.disabled
-                    ? 'text-gray-400 cursor-not-allowed bg-gray-50'
-                    : value === option.value
-                    ? 'bg-blue-100 text-blue-900'
-                    : 'hover:bg-gray-100'
-                }`}
-              >
-                {option.label}
-              </div>
-            ))
-          )}
-        </div>
-      )}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between font-normal"
+          >
+            <span className={cn(!selectedLabel && "text-muted-foreground")}>
+              {selectedLabel ?? placeholder}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <Command shouldFilter={false}>
+            <CommandInput
+              placeholder="Search..."
+              value={searchTerm}
+              onValueChange={setSearchTerm}
+            />
+            <CommandList>
+              {loading ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : displayOptions.length === 0 ? (
+                <CommandEmpty>No results found.</CommandEmpty>
+              ) : (
+                <CommandGroup>
+                  {displayOptions.map((option) => (
+                    <CommandItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={option.disabled}
+                      onSelect={() => {
+                        onChange(option.value);
+                        setSearchTerm("");
+                        setOpen(false);
+                      }}
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          value === option.value ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      {option.label}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

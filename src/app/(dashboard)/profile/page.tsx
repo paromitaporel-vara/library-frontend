@@ -43,26 +43,31 @@ export default function ProfilePage() {
   }, [authUser]);
 
   const fetchUserData = async () => {
-    try {
-      setIsLoading(true);
-      const [userRes, borrowsRes] = await Promise.all([
-        api.get<User>(`/users/${authUser?.id}`),
-        api.get<Borrow[]>("/borrows"),
-      ]);
+    setIsLoading(true);
 
+    try {
+      const userRes = await api.get<User>(`/users/${authUser?.id}`);
       setUserData(userRes.data);
       setEditName(userRes.data.name || "");
+    } catch (err: any) {
+      setModalMessage("Failed to fetch profile data");
+      console.error(err);
+    }
 
-      const userBorrows = borrowsRes.data.filter(
+    try {
+      const borrowsRes = await api.get<any>("/borrows");
+      const borrowsData: Borrow[] = Array.isArray(borrowsRes.data)
+        ? borrowsRes.data
+        : borrowsRes.data?.data ?? [];
+      const userBorrows = borrowsData.filter(
         (b) => b.userId === authUser?.id,
       );
       setBorrows(userBorrows);
     } catch (err: any) {
-      setModalMessage("Failed to fetch profile data");
-      console.error(err);
-    } finally {
-      setIsLoading(false);
+      console.error("Failed to fetch borrows:", err);
     }
+
+    setIsLoading(false);
   };
 
   const handleUpdateName = async () => {
@@ -137,7 +142,7 @@ export default function ProfilePage() {
       setTimeout(() => {
         useAuthStore.getState().logout();
         window.location.href = "/login";
-      }, 2000);
+      }, 1000);
     } catch (err: any) {
       setModalMessage(err.response?.data?.message || "Failed to change email");
     }
@@ -561,6 +566,7 @@ export default function ProfilePage() {
                 disabled
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
               />
+              
             </div>
 
             {!passwordOtpSent ? (

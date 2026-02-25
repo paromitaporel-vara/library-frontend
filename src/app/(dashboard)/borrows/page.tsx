@@ -2,11 +2,24 @@
 
 import { useState, useEffect, useCallback } from "react";
 import api from "@/lib/api";
-import { Borrow } from "@/types";
+import { Borrow, PaginatedResponse, PaginationMeta } from "@/types";
 import { useAuthStore } from "@/lib/auth";
+import { useDebounce } from "@/hooks/use-debounce";
 import Modal from "@/components/Modal";
 import ConfirmModal from "@/components/ConfirmModal";
 import SearchableSelect from "@/components/SearchableSelect";
+import DataPagination from "@/components/DataPagination";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 interface Option {
   value: string;
@@ -18,7 +31,6 @@ export default function BorrowsPage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === "ADMIN";
 
-  // State
   const [borrows, setBorrows] = useState<Borrow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -31,6 +43,8 @@ export default function BorrowsPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [showReturnConfirm, setShowReturnConfirm] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | null>(null);
 
   const [formData, setFormData] = useState({
     userId: "",
@@ -39,29 +53,32 @@ export default function BorrowsPage() {
     bookPublisher: "",
   });
 
-  useEffect(() => {
-    fetchBorrows();
-  }, [sortOrder]);
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      fetchBorrows(searchQuery);
-    }, 300);
+    setCurrentPage(1);
+  }, [debouncedSearch, sortOrder]);
 
-    return () => clearTimeout(delayDebounce);
-  }, [searchQuery, sortOrder]);
+  useEffect(() => {
+    fetchBorrows(debouncedSearch);
+  }, [debouncedSearch, sortOrder, currentPage]);
 
   const fetchBorrows = async (query?: string) => {
     try {
-      // Only show loading indicator on initial load
       if (isInitialLoad) {
         setIsLoading(true);
       }
+      const params = new URLSearchParams();
+      params.append('sortOrder', sortOrder);
+      params.append('page', String(currentPage));
+      params.append('limit', '10');
+      if (query) params.append('q', query);
       const endpoint = query
-        ? `/borrows/search?q=${encodeURIComponent(query)}&sortOrder=${sortOrder}`
-        : `/borrows?sortOrder=${sortOrder}`;
-      const response = await api.get<Borrow[]>(endpoint);
-      setBorrows(response.data);
+        ? `/borrows/search?${params}`
+        : `/borrows?${params}`;
+      const response = await api.get<PaginatedResponse<Borrow>>(endpoint);
+      setBorrows(response.data.data);
+      setPaginationMeta(response.data.meta);
       setError("");
     } catch (err: any) {
       setError("Failed to fetch borrows");
@@ -80,9 +97,7 @@ export default function BorrowsPage() {
 
   const handleUserSearch = useCallback(async (query: string): Promise<Option[]> => {
     try {
-      const endpoint = query.trim()
-        ? `/users/search-for-borrow?q=${encodeURIComponent(query)}`
-        : "/users";
+      const endpoint = `/users/search-for-borrow${query.trim() ? `?q=${encodeURIComponent(query)}` : ""}`;
       const response = await api.get<any[]>(endpoint);
       return response.data.map((user) => ({
         value: user.id,
@@ -209,19 +224,6 @@ export default function BorrowsPage() {
     }
   };
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case "ACTIVE":
-        return "bg-green-100 text-green-800";
-      case "RETURNED":
-        return "bg-blue-100 text-blue-800";
-      case "OVERDUE":
-        return "bg-red-100 text-red-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
-
   if (isLoading) {
     return <div>Loading borrows...</div>;
   }
@@ -234,12 +236,9 @@ export default function BorrowsPage() {
           <p className="mt-2 text-sm text-gray-700">Manage book borrowing and returns</p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-          >
+          <Button onClick={() => setShowAddModal(true)}>
             New Borrow
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -250,12 +249,11 @@ export default function BorrowsPage() {
       )}
 
       <div className="mt-4">
-        <input
+        <Input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by book title, author, user name, or email..."
-          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
@@ -311,21 +309,29 @@ export default function BorrowsPage() {
                       {borrow.returnedAt ? new Date(borrow.returnedAt).toLocaleDateString() : "-"}
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(borrow.status)}`}>
+                      <Badge
+                        variant={
+                          borrow.status === "ACTIVE" ? "default" :
+                          borrow.status === "RETURNED" ? "secondary" :
+                          borrow.status === "OVERDUE" ? "destructive" : "outline"
+                        }
+                      >
                         {borrow.status}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                       <div className="flex gap-2">
                         {isAdmin && (
                           <>
-                            <button
-                              onClick={() => handleEditBorrow(borrow)}
-                              className="text-blue-600 hover:text-blue-900"
-                              disabled={borrow.returnedAt !== null}
-                            >
-                              Edit
-                            </button>
+                            {!borrow.returnedAt && (
+                              <button
+                                onClick={() => handleEditBorrow(borrow)}
+                                className="text-blue-600 hover:text-blue-900"
+                              >
+                                Edit
+                              </button>
+                            )}
+
                             {!borrow.returnedAt && (
                               <button
                                 onClick={() => setShowReturnConfirm(borrow.id)}
@@ -346,6 +352,10 @@ export default function BorrowsPage() {
         </div>
       </div>
 
+      {paginationMeta && (
+        <DataPagination meta={paginationMeta} onPageChange={setCurrentPage} />
+      )}
+
       {modalMessage && (
         <Modal onClose={() => setModalMessage(null)} message={modalMessage} />
       )}
@@ -361,117 +371,101 @@ export default function BorrowsPage() {
         />
       )}
 
-      {showAddModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-4">Create New Borrow</h2>
-            <form onSubmit={handleCreateBorrow} className="space-y-4">
-              {isAdmin && (
-                <SearchableSelect
-                  label="User"
-                  required
-                  value={formData.userId}
-                  onChange={(value) => setFormData({ ...formData, userId: value })}
-                  onSearch={handleUserSearch}
-                  options={[]}
-                  placeholder="Search by name or email..."
-                />
-              )}
-
+      <Dialog open={showAddModal} onOpenChange={(open) => {
+        if (!open) {
+          setShowAddModal(false);
+          setFormData({ userId: "", bookTitle: "", bookAuthor: "", bookPublisher: "" });
+        }
+      }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New Borrow</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateBorrow} className="space-y-4">
+            {isAdmin && (
               <SearchableSelect
-                label="Book Title"
+                label="User"
                 required
-                value={formData.bookTitle}
-                onChange={(value) => {
-                  setFormData({ ...formData, bookTitle: value });
-                }}
-                onSearch={handleTitleSearch}
+                value={formData.userId}
+                onChange={(value) => setFormData({ ...formData, userId: value })}
+                onSearch={handleUserSearch}
                 options={[]}
-                placeholder="Search by title..."
+                placeholder="Search by name or email..."
               />
+            )}
 
-              <SearchableSelect
-                label="Author"
+            <SearchableSelect
+              label="Book Title"
+              required
+              value={formData.bookTitle}
+              onChange={(value) => setFormData({ ...formData, bookTitle: value })}
+              onSearch={handleTitleSearch}
+              options={[]}
+              placeholder="Search by title..."
+            />
+
+            <SearchableSelect
+              label="Author"
+              required
+              value={formData.bookAuthor}
+              onChange={(value) => setFormData({ ...formData, bookAuthor: value })}
+              onSearch={handleAuthorSearch}
+              options={[]}
+              placeholder="Search by author..."
+            />
+
+            <SearchableSelect
+              label="Publisher"
+              required
+              value={formData.bookPublisher}
+              onChange={(value) => setFormData({ ...formData, bookPublisher: value })}
+              onSearch={handlePublisherSearch}
+              options={[]}
+              placeholder="Search by publisher..."
+            />
+
+            <DialogFooter>
+              <Button type="submit">Create Borrow</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowAddModal(false);
+                  setFormData({ userId: "", bookTitle: "", bookAuthor: "", bookPublisher: "" });
+                }}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showEditModal && !!editingBorrow} onOpenChange={(open) => !open && setShowEditModal(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Due Date</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdateBorrow} className="space-y-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="dueDate">Due Date *</Label>
+              <Input
+                id="dueDate"
+                type="date"
                 required
-                value={formData.bookAuthor}
-                onChange={(value) => {
-                  setFormData({ ...formData, bookAuthor: value });
-                }}
-                onSearch={handleAuthorSearch}
-                options={[]}
-                placeholder="Search by author..."
+                value={editDueDate}
+                onChange={(e) => setEditDueDate(e.target.value)}
               />
-
-              <SearchableSelect
-                label="Publisher"
-                required
-                value={formData.bookPublisher}
-                onChange={(value) => {
-                  setFormData({ ...formData, bookPublisher: value });
-                }}
-                onSearch={handlePublisherSearch}
-                options={[]}
-                placeholder="Search by publisher..."
-              />
-
-              <div className="flex gap-2 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Create Borrow
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setFormData({ userId: "", bookTitle: "", bookAuthor: "", bookPublisher: "" });
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showEditModal && editingBorrow && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold mb-4">Edit Due Date</h2>
-            <form onSubmit={handleUpdateBorrow} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Due Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={editDueDate}
-                  onChange={(e) => setEditDueDate(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                />
-              </div>
-
-              <div className="flex gap-2 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Update
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowEditModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+            <DialogFooter>
+              <Button type="submit">Update</Button>
+              <Button type="button" variant="outline" onClick={() => setShowEditModal(false)}>
+                Cancel
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
