@@ -46,25 +46,14 @@ export default function ProfilePage() {
     setIsLoading(true);
 
     try {
-      const userRes = await api.get<User>(`/users/${authUser?.id}`);
+      const userRes = await api.get<any>(`/users/${authUser?.id}`);
       setUserData(userRes.data);
       setEditName(userRes.data.name || "");
+      // Borrows are now included in user response with liveFine and status
+      setBorrows(userRes.data.borrows || []);
     } catch (err: any) {
       setModalMessage("Failed to fetch profile data");
       console.error(err);
-    }
-
-    try {
-      const borrowsRes = await api.get<any>("/borrows");
-      const borrowsData: Borrow[] = Array.isArray(borrowsRes.data)
-        ? borrowsRes.data
-        : borrowsRes.data?.data ?? [];
-      const userBorrows = borrowsData.filter(
-        (b) => b.userId === authUser?.id,
-      );
-      setBorrows(userBorrows);
-    } catch (err: any) {
-      console.error("Failed to fetch borrows:", err);
     }
 
     setIsLoading(false);
@@ -239,13 +228,13 @@ export default function ProfilePage() {
       });
       setModalMessage("Profile photo updated successfully");
       // Fetch updated user
-        const updatedUser = await api.get(`/users/${authUser?.id}`);
+      const updatedUser = await api.get(`/users/${authUser?.id}`);
 
-        // Update profile page state
-        setUserData(updatedUser.data);
+      // Update profile page state
+      setUserData(updatedUser.data);
 
-        // Update global auth state (this fixes navbar icon instantly)
-        useAuthStore.setState({ user: updatedUser.data });
+      // Update global auth state (this fixes navbar icon instantly)
+      useAuthStore.setState({ user: updatedUser.data });
     } catch (err: any) {
       setModalMessage(err.response?.data?.message || "Failed to upload photo");
     } finally {
@@ -266,6 +255,10 @@ export default function ProfilePage() {
     }
   };
 
+  const totalFine = borrows.reduce(
+    (sum, b) => sum + (b.liveFine || 0),
+    0
+  );
   if (isLoading) {
     return <div className="text-center py-8">Loading profile...</div>;
   }
@@ -534,9 +527,9 @@ export default function ProfilePage() {
               Outstanding Fine
             </label>
             <p
-              className={`mt-1 text-sm font-semibold ${userData?.fine && userData.fine > 0 ? "text-red-600" : "text-green-600"}`}
+              className={`mt-1 text-sm font-semibold ${totalFine > 0 ? "text-red-600" : "text-green-600"}`}
             >
-              ₹{userData?.fine?.toFixed(2) || "0.00"}
+              ₹{totalFine.toFixed(2)}
             </p>
           </div>
         </div>
@@ -566,7 +559,7 @@ export default function ProfilePage() {
                 disabled
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
               />
-              
+
             </div>
 
             {!passwordOtpSent ? (

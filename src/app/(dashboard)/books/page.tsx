@@ -106,6 +106,15 @@ export default function BooksPage() {
     }
   };
 
+  const handleUpdateCopies = async (id: string, change: number) => {
+    try {
+      await api.patch(`/books/${id}/copies`, { change });
+      fetchBooks(debouncedSearch, true);
+    } catch (err: any) {
+      setModalMessage(err.response?.data?.message || "Failed to update copies");
+    }
+  };
+
   if (isLoading) {
     return <div className="text-center py-8">Loading books...</div>;
   }
@@ -192,7 +201,30 @@ export default function BooksPage() {
                       </td>
 
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {book.copies}
+                        {user?.role === "ADMIN" ? (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => handleUpdateCopies(book.id, -1)}
+                              disabled={book.copies <= 1}
+                            >
+                              −
+                            </Button>
+                            <span className="min-w-[1.5rem] text-center">{book.copies}</span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => handleUpdateCopies(book.id, 1)}
+                            >
+                              +
+                            </Button>
+                          </div>
+                        ) : (
+                          book.copies
+                        )}
                       </td>
 
                       <td className="whitespace-nowrap px-3 py-4 text-sm">

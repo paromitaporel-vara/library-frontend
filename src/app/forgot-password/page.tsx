@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
         confirmPassword,
       });
       setModalMessage('Password reset successful! Redirecting to login...');
-      setTimeout(() => router.push('/login'), 2000);
+      setTimeout(() => router.push('/login'), 1000);
     } catch (err: any) {
       setModalMessage(err.response?.data?.message || 'Failed to reset password');
     } finally {

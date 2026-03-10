@@ -15,6 +15,7 @@ export interface Book {
   author: string;
   publisher?: string;
   copies: number;
+  availableCopies?: number;
   isAvailable: boolean;
   borrows?: Borrow[];
 }
@@ -27,6 +28,7 @@ export interface Borrow {
   dueDate: string;
   returnedAt?: string;
   status: 'ACTIVE' | 'RETURNED' | 'OVERDUE';
+  liveFine?: number;
   user?: User;
   book?: Book;
   createdAt?: string;
